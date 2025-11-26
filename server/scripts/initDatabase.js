@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const initDatabase = async () => {
   try {
-    // Create companies table
+    // 1. Create companies table (No dependencies)
     await db.query(`
       CREATE TABLE IF NOT EXISTS companies (
         id TEXT PRIMARY KEY,
@@ -18,27 +18,8 @@ const initDatabase = async () => {
       )
     `);
 
-    // Create users table with company_id
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-        username TEXT NOT NULL,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT CHECK(role IN ('admin', 'driver')) NOT NULL,
-        email TEXT,
-        phone TEXT,
-        profile_image TEXT,
-        truck_id TEXT REFERENCES trucks(id) ON DELETE SET NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(company_id, username),
-        UNIQUE(truck_id)
-      )
-    `);
-
-    // Create trucks table with company_id
+    // 2. Create trucks table (Depends on companies)
+    // Must be created BEFORE users because users references trucks(id)
     await db.query(`
       CREATE TABLE IF NOT EXISTS trucks (
         id TEXT PRIMARY KEY,
@@ -63,7 +44,27 @@ const initDatabase = async () => {
       )
     `);
 
-    // Create trips table with company_id
+    // 3. Create users table (Depends on companies AND trucks)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT CHECK(role IN ('admin', 'driver')) NOT NULL,
+        email TEXT,
+        phone TEXT,
+        profile_image TEXT,
+        truck_id TEXT REFERENCES trucks(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(company_id, username),
+        UNIQUE(truck_id)
+      )
+    `);
+
+    // 4. Create trips table (Depends on companies and trucks)
     await db.query(`
       CREATE TABLE IF NOT EXISTS trips (
         id TEXT PRIMARY KEY,
@@ -83,7 +84,7 @@ const initDatabase = async () => {
       )
     `);
 
-    // Create expenses table with company_id
+    // 5. Create expenses table (Depends on companies and trucks)
     await db.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
@@ -101,7 +102,7 @@ const initDatabase = async () => {
       )
     `);
 
-    // Create maintenance_records table with company_id
+    // 6. Create maintenance_records table (Depends on companies and trucks)
     await db.query(`
       CREATE TABLE IF NOT EXISTS maintenance_records (
         id TEXT PRIMARY KEY,
