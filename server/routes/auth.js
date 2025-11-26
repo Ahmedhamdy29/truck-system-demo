@@ -58,6 +58,7 @@ router.post('/login', async (req, res) => {
 
     res.json({ token, user: userResponse });
   } catch (err) {
+    console.error('Login Error:', err); // <--- Log the error to console
     res.status(500).json({ error: 'خطأ في قاعدة البيانات', details: err.message });
   }
 });
