@@ -10,6 +10,7 @@ const router = express.Router();
 // Login with company code
 router.post('/login', async (req, res) => {
   const { username, password, companyCode } = req.body;
+  console.log(`📥 Login Attempt: User=${username}, Company=${companyCode}`); // Log the attempt
 
   if (!username || !password || !companyCode) {
     return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور وكود الشركة مطلوبة' });
