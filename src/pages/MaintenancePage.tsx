@@ -1,18 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout/Layout';
 import { StatCard } from '../components/Cards/StatCard';
 import { AddMaintenanceModal } from '../components/Modals/AddMaintenanceModal';
-import { Wrench, Calendar, DollarSign, AlertTriangle, Plus, Filter, Search, FileSpreadsheet } from 'lucide-react';
+import { Wrench, Calendar, DollarSign, Plus, Filter, Search, FileSpreadsheet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useData } from '../contexts/DataContext';
 import { exportMaintenanceToExcel } from '../utils/exportUtils';
-import { useTrucks } from '../hooks/useTrucks';
-import { useMaintenance } from '../hooks/useMaintenance';
 
 export function MaintenancePage() {
-  const { maintenance } = useData();
-  const { trucks } = useTrucks();
-  const maintenanceHook = useMaintenance();
+  const { maintenance, trucks: trucksState } = useData();
+  const { trucks } = trucksState;
   const [selectedPeriod, setSelectedPeriod] = useState('this-month');
   const [selectedTruck, setSelectedTruck] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
@@ -22,10 +19,6 @@ export function MaintenancePage() {
   // Calculate statistics
   const totalMaintenance = maintenance.maintenanceRecords.length;
   const totalCost = maintenance.maintenanceRecords.reduce((sum, record) => sum + record.cost, 0);
-  const upcomingMaintenance = maintenance.maintenanceRecords.filter(record => 
-    record.nextDue && new Date(record.nextDue) > new Date()
-  ).length;
-  const averageCost = totalMaintenance > 0 ? totalCost / totalMaintenance : 0;
 
   // Filter maintenance records
   const filteredRecords = maintenance.maintenanceRecords.filter(record => {
@@ -80,22 +73,26 @@ export function MaintenancePage() {
     { name: 'فحص شامل', value: maintenance.maintenanceRecords.filter(r => r.type === 'comprehensive').length, color: '#EF4444' },
   ];
 
-  // Monthly maintenance cost data
-  const monthlyData = [
-    { month: 'يناير', cost: 0 },
-    { month: 'فبراير', cost: 0 },
-    { month: 'مارس', cost: 0 },
-    { month: 'أبريل', cost: 0 },
-    { month: 'مايو', cost: 0 },
-    { month: 'يونيو', cost: 0 },
-  ];
+  // Monthly maintenance cost data: مجموع تكلفة الصيانة في كل شهر من آخر 6 أشهر (بيانات حقيقية)
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const monthlyData = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    const cost = maintenance.maintenanceRecords
+      .filter(r => {
+        const recordDate = new Date(r.date);
+        return recordDate.getMonth() === d.getMonth() && recordDate.getFullYear() === d.getFullYear();
+      })
+      .reduce((sum, r) => sum + r.cost, 0);
+    return { month: monthNames[d.getMonth()], cost };
+  });
 
-  const handleAddMaintenance = async (newMaintenance: any) => {
+  const handleDeleteMaintenance = async (recordId: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف سجل الصيانة؟')) return;
     try {
-      await maintenance.addMaintenanceRecord(newMaintenance);
-      setIsAddModalOpen(false);
-    } catch (err) {
-      alert('حدث خطأ أثناء إضافة الصيانة. يرجى المحاولة مرة أخرى.');
+      await maintenance.deleteMaintenanceRecord(recordId);
+    } catch {
+      alert('تعذر حذف سجل الصيانة، يرجى المحاولة مجدداً');
     }
   };
 
@@ -319,11 +316,7 @@ export function MaintenancePage() {
                           )}
                           <button
                             className="text-red-600 hover:text-red-800 px-2 py-1 rounded transition-colors border border-red-200 bg-red-50 text-xs"
-                            onClick={async () => {
-                              if(window.confirm('هل أنت متأكد من حذف سجل الصيانة؟')) {
-                                await maintenanceHook.deleteMaintenanceRecord(record.id);
-                              }
-                            }}
+                            onClick={() => handleDeleteMaintenance(record.id)}
                           >
                             حذف
                           </button>
@@ -355,7 +348,7 @@ export function MaintenancePage() {
       <AddMaintenanceModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddMaintenance}
+        onAdd={maintenance.addMaintenanceRecord}
         selectedTruckId={selectedTruck === 'all' ? undefined : selectedTruck}
       />
     </Layout>

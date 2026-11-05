@@ -1,23 +1,22 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout/Layout';
 import { StatCard } from '../components/Cards/StatCard';
 import { AddTripModal } from '../components/Modals/AddTripModal';
-import { Route, Calendar, MapPin, Clock, Plus, Filter, Search, FileSpreadsheet, CheckCircle, AlertCircle, PlayCircle } from 'lucide-react';
+import { Route, Calendar, MapPin, Clock, Plus, Filter, Search, FileSpreadsheet, CheckCircle, AlertCircle, PlayCircle, Edit, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useData } from '../contexts/DataContext';
 import { exportTripsToExcel } from '../utils/exportUtils';
-import { useTrucks } from '../hooks/useTrucks';
-import { useAuth } from '../contexts/AuthContext';
+import { Trip } from '../types';
 
 export function TripsPage() {
-  const { trips } = useData();
-  const { trucks } = useTrucks();
-  const { user } = useAuth();
+  const { trips, trucks: trucksState } = useData();
+  const { trucks } = trucksState;
   const [selectedPeriod, setSelectedPeriod] = useState('this-month');
   const [selectedTruck, setSelectedTruck] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
 
   // Calculate statistics
   const totalTrips = trips.trips.length;
@@ -25,11 +24,8 @@ export function TripsPage() {
   const completedTrips = trips.trips.filter(trip => trip.status === 'completed').length;
   const delayedTrips = trips.trips.filter(trip => trip.status === 'delayed').length;
 
-  // فلترة الرحلات للسائق فقط
+  // فلترة الرحلات (الصفحة لا يصل إليها السائق أصلاً، فلا فلتر خاص به هنا)
   const filteredTrips = trips.trips.filter(trip => {
-    if (user?.role === 'driver') {
-      return trip.truckId === user.truckId;
-    }
     const truck = trucks.find(t => t.id === trip.truckId);
     const matchesSearch = truck?.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          trip.destination.toLowerCase().includes(searchTerm.toLowerCase());
@@ -80,19 +76,25 @@ export function TripsPage() {
     { name: 'متأخرة', value: delayedTrips, color: '#F59E0B' },
   ];
 
-  // Monthly trips data
-  const monthlyData = [
-    { month: 'يناير', trips: 0 },
-    { month: 'فبراير', trips: 0 },
-    { month: 'مارس', trips: 0 },
-    { month: 'أبريل', trips: 0 },
-    { month: 'مايو', trips: 0 },
-    { month: 'يونيو', trips: 0 },
-  ];
+  // Monthly trips data: عدد الرحلات في كل شهر من آخر 6 أشهر (بيانات حقيقية)
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const monthlyData = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    const monthTrips = trips.trips.filter(t => {
+      const tripDate = new Date(t.startDate);
+      return tripDate.getMonth() === d.getMonth() && tripDate.getFullYear() === d.getFullYear();
+    }).length;
+    return { month: monthNames[d.getMonth()], trips: monthTrips };
+  });
 
-  const handleAddTrip = (newTrip: any) => {
-    trips.addTrip(newTrip);
-    setIsAddModalOpen(false);
+  const handleDeleteTrip = async (tripId: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه الرحلة؟')) return;
+    try {
+      await trips.deleteTrip(tripId);
+    } catch {
+      alert('تعذر حذف الرحلة، يرجى المحاولة مجدداً');
+    }
   };
 
   const handleExportExcel = () => {
@@ -142,7 +144,7 @@ export function TripsPage() {
     }
   };
 
-  const calculateProgress = (trip: any) => {
+  const calculateProgress = (trip: Trip) => {
     if (trip.status === 'completed') return 100;
     if (trip.status === 'delayed') return trip.progress || 0;
     
@@ -390,6 +392,22 @@ export function TripsPage() {
                               انتهت: {new Date(trip.actualEndDate).toLocaleDateString('ar')}
                             </p>
                           )}
+                          <div className="flex items-center space-x-2 rtl:space-x-reverse mt-2">
+                            <button
+                              onClick={() => setEditingTrip(trip)}
+                              className="flex items-center space-x-1 rtl:space-x-reverse px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
+                            >
+                              <Edit className="h-3 w-3" />
+                              <span>تعديل</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTrip(trip.id)}
+                              className="flex items-center space-x-1 rtl:space-x-reverse px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>حذف</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -418,8 +436,16 @@ export function TripsPage() {
       <AddTripModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddTrip}
+        onAdd={trips.addTrip}
         selectedTruckId={selectedTruck === 'all' ? undefined : selectedTruck}
+      />
+
+      <AddTripModal
+        isOpen={editingTrip !== null}
+        onClose={() => setEditingTrip(null)}
+        onAdd={trips.addTrip}
+        initialTrip={editingTrip}
+        onUpdate={trips.updateTrip}
       />
     </Layout>
   );

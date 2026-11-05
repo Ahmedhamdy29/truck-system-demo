@@ -1,21 +1,57 @@
 import * as XLSX from 'xlsx';
+import { Expense, MaintenanceRecord, Trip, Truck } from '../types';
 
-export const exportToExcel = (data: any[], fileName: string, sheetName: string) => {
+export interface TruckProfitabilityRow {
+  truck: string;
+  totalCost: number;
+  totalMaintenance: number;
+  totalGeneralCost: number;
+  tripCount: number;
+  avgCostPerTrip: number;
+  totalRevenue: number;
+  profit: number;
+  status: Truck['status'];
+}
+
+export interface FuelReportRow {
+  truck: string;
+  amount: number;
+  count: number;
+  avgCost: number;
+}
+
+export interface PerformanceReportData {
+  totalExpenses: number;
+  totalMaintenanceCost: number;
+  totalTrips: number;
+  completionRate: number;
+}
+
+export interface DriverEfficiencyRow {
+  driver: string;
+  totalTrips: number;
+  completedTrips: number;
+  efficiency: number;
+}
+
+type ExcelRow = Record<string, string | number | null | undefined>;
+
+export const exportToExcel = (data: ExcelRow[], fileName: string, sheetName: string) => {
   // تحويل البيانات إلى ورقة عمل
   const worksheet = XLSX.utils.json_to_sheet(data);
-  
+
   // إنشاء مصنف عمل جديد
   const workbook = XLSX.utils.book_new();
-  
+
   // إضافة ورقة العمل للمصنف
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-  
+
   // حفظ الملف
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
 };
 
 // تصدير بيانات الشاحنات
-export const exportTrucksToExcel = (trucks: any[]) => {
+export const exportTrucksToExcel = (trucks: Truck[]) => {
   const exportData = trucks.map(truck => ({
     'رقم الشاحنة': truck.number,
     'الموديل': truck.model,
@@ -34,7 +70,7 @@ export const exportTrucksToExcel = (trucks: any[]) => {
 };
 
 // تصدير بيانات المصاريف
-export const exportExpensesToExcel = (expenses: any[], trucks: any[]) => {
+export const exportExpensesToExcel = (expenses: Expense[], trucks: Truck[]) => {
   const exportData = expenses.map(expense => {
     const truck = trucks.find(t => t.id === expense.truckId);
     return {
@@ -52,7 +88,7 @@ export const exportExpensesToExcel = (expenses: any[], trucks: any[]) => {
 };
 
 // تصدير بيانات الصيانة
-export const exportMaintenanceToExcel = (maintenance: any[], trucks: any[]) => {
+export const exportMaintenanceToExcel = (maintenance: MaintenanceRecord[], trucks: Truck[]) => {
   const exportData = maintenance.map(record => {
     const truck = trucks.find(t => t.id === record.truckId);
     return {
@@ -69,7 +105,7 @@ export const exportMaintenanceToExcel = (maintenance: any[], trucks: any[]) => {
 };
 
 // تصدير بيانات الرحلات
-export const exportTripsToExcel = (trips: any[], trucks: any[]) => {
+export const exportTripsToExcel = (trips: Trip[], trucks: Truck[]) => {
   const exportData = trips.map(trip => {
     const truck = trucks.find(t => t.id === trip.truckId);
     return {
@@ -89,7 +125,7 @@ export const exportTripsToExcel = (trips: any[], trucks: any[]) => {
   exportToExcel(exportData, `تقرير_الرحلات_${new Date().toISOString().split('T')[0]}`, 'الرحلات');
 };
 
-export const exportProfitabilityReport = (truckProfitability: any[]) => {
+export const exportProfitabilityReport = (truckProfitability: TruckProfitabilityRow[]) => {
   const exportData = truckProfitability.map(truck => ({
     'الشاحنة': truck.truck,
     'إجمالي الإيرادات': truck.totalRevenue || 0,
@@ -103,7 +139,7 @@ export const exportProfitabilityReport = (truckProfitability: any[]) => {
   exportToExcel(exportData, `تقرير_ربحية_الشاحنات_${new Date().toISOString().split('T')[0]}`, 'الربحية');
 };
 
-export const exportFuelReport = (fuelData: any[]) => {
+export const exportFuelReport = (fuelData: FuelReportRow[]) => {
   const exportData = fuelData.map(item => ({
     'الشاحنة': item.truck,
     'عدد العمليات': item.count || 0,
@@ -114,7 +150,7 @@ export const exportFuelReport = (fuelData: any[]) => {
   exportToExcel(exportData, `تقرير_الوقود_${new Date().toISOString().split('T')[0]}`, 'الوقود');
 };
 
-export const exportPerformanceReport = (data: any) => {
+export const exportPerformanceReport = (data: PerformanceReportData) => {
   const exportData = [{
     'إجمالي المصاريف': data.totalExpenses || 0,
     'تكلفة الصيانة': data.totalMaintenanceCost || 0,
@@ -125,7 +161,7 @@ export const exportPerformanceReport = (data: any) => {
   exportToExcel(exportData, `تقرير_الأداء_${new Date().toISOString().split('T')[0]}`, 'الأداء');
 };
 
-export const exportDriverReport = (driverEfficiency: any[]) => {
+export const exportDriverReport = (driverEfficiency: DriverEfficiencyRow[]) => {
   const exportData = driverEfficiency.map(driver => ({
     'السائق': driver.driver,
     'إجمالي الرحلات': driver.totalTrips || 0,

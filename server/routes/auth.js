@@ -3,14 +3,14 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../database/database.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, requireJwtSecret } from '../middleware/auth.js';
+import { handleDbError, isUniqueViolation, connectClient } from '../middleware/validate.js';
 
 const router = express.Router();
 
 // Login with company code
 router.post('/login', async (req, res) => {
   const { username, password, companyCode } = req.body;
-  console.log(`📥 Login Attempt: User=${username}, Company=${companyCode}`); // Log the attempt
 
   if (!username || !password || !companyCode) {
     return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور وكود الشركة مطلوبة' });
@@ -40,7 +40,7 @@ router.post('/login', async (req, res) => {
         companyId: user.company_id,
         companyName: company.name
       },
-      process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+      requireJwtSecret(),
       { expiresIn: '24h' }
     );
 
@@ -59,47 +59,60 @@ router.post('/login', async (req, res) => {
 
     res.json({ token, user: userResponse });
   } catch (err) {
-    console.error('Login Error:', err); // <--- Log the error to console
-    res.status(500).json({ error: 'خطأ في قاعدة البيانات', details: err.message });
+    console.error('Login Error:', err);
+    res.status(500).json({ error: 'خطأ في الخادم' });
   }
 });
 
-// Register new company (Admin only)
+// Register new company (public registration — kept as-is by design).
+// The company + its admin are created inside one transaction, so a failure
+// can never leave a company without an admin (or vice versa).
 router.post('/register-company', async (req, res) => {
   const { name, code, email, phone, address, adminUsername, adminPassword, adminName, adminEmail } = req.body;
 
   if (!name || !code || !adminUsername || !adminPassword || !adminName) {
     return res.status(400).json({ error: 'جميع الحقول المطلوبة يجب ملؤها' });
   }
+  if (typeof adminPassword !== 'string' || adminPassword.length < 6) {
+    return res.status(400).json({ error: 'كلمة مرور الآدمن يجب أن تكون 6 أحرف على الأقل' });
+  }
+  if (adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    return res.status(400).json({ error: 'البريد الإلكتروني للآدمن غير صالح' });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'البريد الإلكتروني للشركة غير صالح' });
+  }
 
+  const client = await connectClient(db, res);
+  if (!client) return;
   try {
-    // Check if company code already exists
-    const existingCompany = await db.query('SELECT id FROM companies WHERE code = $1', [code]);
-    if (existingCompany.rows.length > 0) {
-      return res.status(400).json({ error: 'كود الشركة موجود مسبقاً' });
-    }
+    await client.query('BEGIN');
 
-    // Check if admin username exists globally
-    const existingUser = await db.query('SELECT id FROM users WHERE username = $1', [adminUsername]);
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+    // Company code must be unique (also enforced by UNIQUE(code)).
+    const existingCompany = await client.query('SELECT id FROM companies WHERE code = $1', [code]);
+    if (existingCompany.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'كود الشركة موجود مسبقاً' });
     }
 
     const companyId = uuidv4();
     const adminId = uuidv4();
     const hashedPassword = bcrypt.hashSync(adminPassword, 10);
 
-    // Create company
-    await db.query(
+    await client.query(
       'INSERT INTO companies (id, name, code, email, phone, address) VALUES ($1, $2, $3, $4, $5, $6)',
-      [companyId, name, code, email, phone, address]
+      [companyId, name, code, email || null, phone || null, address || null]
     );
 
-    // Create admin user for the company
-    await db.query(
+    // Username uniqueness is scoped to the company: UNIQUE(company_id, username).
+    // The company is brand new, so a clash here can only come from a race;
+    // the unique constraint still guards it (23505 -> 400 below).
+    await client.query(
       'INSERT INTO users (id, company_id, username, password, name, role, email) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [adminId, companyId, adminUsername, hashedPassword, adminName, 'admin', adminEmail]
+      [adminId, companyId, adminUsername, hashedPassword, adminName, 'admin', adminEmail || null]
     );
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'تم إنشاء الشركة بنجاح',
@@ -107,7 +120,14 @@ router.post('/register-company', async (req, res) => {
       admin: { username: adminUsername, name: adminName }
     });
   } catch (err) {
-    res.status(500).json({ error: 'خطأ في قاعدة البيانات', details: err.message });
+    await client.query('ROLLBACK').catch(() => {});
+    if (isUniqueViolation(err)) {
+      // Either the company code or the admin username (within this company).
+      return res.status(400).json({ error: 'كود الشركة أو اسم مستخدم الآدمن موجود مسبقاً' });
+    }
+    return handleDbError(res, err);
+  } finally {
+    client.release();
   }
 });
 
@@ -120,7 +140,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
     );
     const user = result.rows[0];
     if (!user) {
-      return res.status(404).json({ error: 'المستخدم غير موجود' });
+      return res.status(401).json({ error: 'المستخدم غير موجود' });
     }
 
     const userResponse = {
@@ -138,28 +158,35 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
     res.json(userResponse);
   } catch (err) {
-    res.status(500).json({ error: 'خطأ في قاعدة البيانات', details: err.message });
+    return handleDbError(res, err);
   }
 });
 
-// Update user profile
+// Update user profile — COALESCE keeps any field that was not sent, so a
+// partial update never wipes the other fields.
 router.put('/profile', authenticateToken, async (req, res) => {
   const { name, email, phone } = req.body;
   try {
     const result = await db.query(
-      'UPDATE users SET name = $1, email = $2, phone = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4',
-      [name, email, phone, req.user.id]
+      `UPDATE users SET
+         name = COALESCE($1, name),
+         email = COALESCE($2, email),
+         phone = COALESCE($3, phone),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [name ?? null, email ?? null, phone ?? null, req.user.id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'المستخدم غير موجود' });
+      return res.status(401).json({ error: 'المستخدم غير موجود' });
     }
     res.json({ message: 'تم تحديث الملف الشخصي بنجاح' });
   } catch (err) {
-    res.status(500).json({ error: 'فشل في تحديث الملف الشخصي', details: err.message });
+    return handleDbError(res, err, 'تعذّر تحديث الملف الشخصي');
   }
 });
 
-// Verify token
+// Verify token — companyName comes from the JOIN in authenticateToken,
+// so it is the real company name, not a value copied from the token.
 router.get('/verify', authenticateToken, (req, res) => {
   res.json({
     valid: true,

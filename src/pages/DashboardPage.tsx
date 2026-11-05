@@ -1,18 +1,17 @@
-import React from 'react';
 import { Layout } from '../components/Layout/Layout';
 import { StatCard } from '../components/Cards/StatCard';
 import { TruckStatusChart } from '../components/Charts/TruckStatusChart';
 import { WeeklyPerformanceChart } from '../components/Charts/WeeklyPerformanceChart';
-import { Truck, Route, DollarSign, AlertTriangle, MapPin, Clock, Plus } from 'lucide-react';
-import { useTrucks } from '../hooks/useTrucks';
+import { Truck, Route, DollarSign, AlertTriangle, MapPin, Clock } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 
 export function DashboardPage() {
-  const { trucks, loading, error } = useTrucks();
-  const { expenses } = useData();
+  const { trucks: trucksState, trips, expenses } = useData();
+  const { trucks, loading, error } = trucksState;
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Redirect driver to their truck page
   if (user?.role === 'driver' && user.truckId) {
@@ -50,10 +49,10 @@ export function DashboardPage() {
     );
   }
 
-  const availableTrucks = trucks.filter(t => t.status === 'available').length;
   const inTripTrucks = trucks.filter(t => t.status === 'in-trip').length;
   const maintenanceTrucks = trucks.filter(t => t.status === 'maintenance').length;
-  const activeTrucks = trucks.filter(t => t.currentTrip);
+  // الرحلات النشطة تُشتق من قائمة الرحلات (الخادم لا يملأ truck.currentTrip)
+  const activeTrips = trips.trips.filter(t => t.status === 'active');
 
   const sarExpenses = expenses.expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -89,9 +88,8 @@ export function DashboardPage() {
         </div>
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
-          {/* TruckStatusChart مخفي مؤقتاً */}
-          {/* <TruckStatusChart trucks={trucks} /> */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <TruckStatusChart trucks={trucks} />
           <WeeklyPerformanceChart />
         </div>
 
@@ -107,32 +105,35 @@ export function DashboardPage() {
               </div>
             </div>
             
-            {activeTrucks.length > 0 ? (
+            {activeTrips.length > 0 ? (
               <div className="space-y-4">
-                {activeTrucks.slice(0, 3).map((truck) => (
-                  <div key={truck.id} className="flex items-center space-x-4 rtl:space-x-reverse p-3 bg-gray-50 rounded-lg">
+                {activeTrips.slice(0, 3).map((trip) => {
+                  const tripTruck = trucks.find(t => t.id === trip.truckId);
+                  return (
+                  <div key={trip.id} className="flex items-center space-x-4 rtl:space-x-reverse p-3 bg-gray-50 rounded-lg">
                         <div className="bg-blue-100 p-2 rounded-lg">
                       <MapPin className="h-4 w-4 text-blue-600" />
                         </div>
                     <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{truck.number}</h4>
+                          <h4 className="font-medium text-gray-900">{tripTruck?.number || 'شاحنة غير معروفة'}</h4>
                       <p className="text-sm text-gray-600">
-                        {truck.currentTrip?.destination} - {truck.currentTrip?.progress}%
+                        {trip.destination} - {trip.progress}%
                       </p>
                     </div>
                     <div className="text-left rtl:text-right">
                       <div className="w-16 h-2 bg-gray-200 rounded-full">
-                        <div 
+                        <div
                           className="h-2 bg-blue-600 rounded-full"
-                          style={{ width: `${truck.currentTrip?.progress || 0}%` }}
+                          style={{ width: `${trip.progress || 0}%` }}
                         ></div>
                       </div>
                     </div>
                   </div>
-                ))}
-                {activeTrucks.length > 3 && (
+                  );
+                })}
+                {activeTrips.length > 3 && (
                   <p className="text-sm text-gray-500 text-center">
-                    و {activeTrucks.length - 3} رحلات أخرى نشطة
+                    و {activeTrips.length - 3} رحلات أخرى نشطة
                   </p>
                 )}
               </div>
@@ -159,7 +160,10 @@ export function DashboardPage() {
               </p>
               {trucks.length === 0 && (
                 <div className="space-y-3">
-                  <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                  <button
+                    onClick={() => navigate('/trucks')}
+                    className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
                     إضافة شاحنة جديدة
                   </button>
                   <p className="text-sm text-gray-500">أو ابدأ بإضافة مصروف أو سجل صيانة</p>

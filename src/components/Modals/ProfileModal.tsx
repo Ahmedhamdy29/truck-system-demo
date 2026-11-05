@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, User, Mail, Phone, Camera, Save } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -17,11 +17,30 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     phone: user?.phone || '',
     profileImage: user?.profileImage || null
   });
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // مزامنة قيم النموذج مع المستخدم الحالي عند كل فتح للمودال
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        profileImage: user?.profileImage || null
+      });
+      setError('');
+    }
+  }, [isOpen, user]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile(formData);
-    onClose();
+    setError('');
+    try {
+      await updateProfile(formData);
+      onClose();
+    } catch {
+      setError('تعذر حفظ التغييرات، يرجى المحاولة مجدداً');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,6 +85,11 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
           {/* Profile Image */}
           <div className="flex flex-col items-center space-y-4">
             <div className="relative">

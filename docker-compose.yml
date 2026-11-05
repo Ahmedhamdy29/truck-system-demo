@@ -1,0 +1,74 @@
+# One-command demo: Postgres + Express server + Vite dev server.
+#
+#   docker compose up --build
+#   -> open http://localhost:5173
+#   -> login with company code COMP001 / user admin / password admin123
+#
+# DEMO DEFAULTS ONLY — every default below is a public, well-known demo value.
+# They exist so the demo starts with zero setup. Never use them for real data:
+# create a `.env` file next to this file to override any of them, e.g.:
+#   POSTGRES_PASSWORD=<your-db-password>
+#   JWT_SECRET=<a long random string>
+#   SEED_ADMIN_PASSWORD=<a strong password>
+# Docker Compose reads that `.env` file automatically. `.env` is git-ignored.
+#
+# GitHub itself cannot run a backend, so this file is the runnable demo:
+# locally via `docker compose up`, or in the cloud via GitHub Codespaces
+# (see .devcontainer/devcontainer.json).
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: truck_system
+      POSTGRES_USER: postgres
+      # Demo default only — override via POSTGRES_PASSWORD in a root .env file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demo1234}
+    ports:
+      - "5432:5432"
+    volumes:
+      - truck-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d truck_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3001
+      # Demo default only — override via POSTGRES_PASSWORD in a root .env file.
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-demo1234}@db:5432/truck_system
+      # Demo default only — override via JWT_SECRET in a root .env file.
+      JWT_SECRET: ${JWT_SECRET:-demo-jwt-secret-change-me-in-production}
+      # Demo default only — override via SEED_ADMIN_PASSWORD in a root .env file.
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
+      # Demo only: the demo is opened from localhost AND from forwarded
+      # Codespaces URLs, whose origin cannot be known in advance. Reflecting
+      # the request origin is safe here because the demo uses demo-only
+      # credentials and throwaway data — never enable this in production.
+      CORS_ALLOW_ALL_ORIGINS: "true"
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Vite dev-server proxy target: the backend container, not localhost.
+      BACKEND_URL: http://server:3001
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  truck-db-data:

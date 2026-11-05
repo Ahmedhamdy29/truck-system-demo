@@ -3,14 +3,13 @@ import { Layout } from '../components/Layout/Layout';
 import { TruckCard } from '../components/Trucks/TruckCard';
 import { AddTruckModal } from '../components/Modals/AddTruckModal';
 import { AddTripModal } from '../components/Modals/AddTripModal';
-import { useTrucks } from '../hooks/useTrucks';
 import { useData } from '../contexts/DataContext';
 import { exportTrucksToExcel } from '../utils/exportUtils';
 import { Search, Filter, Plus, Route, FileSpreadsheet, Truck } from 'lucide-react';
 
 export function TrucksPage() {
-  const { trucks, loading, error, addTruck } = useTrucks();
-  const { trips } = useData();
+  const { trucks: trucksState, trips } = useData();
+  const { trucks, loading, error, addTruck } = trucksState;
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
   const [isTruckModalOpen, setIsTruckModalOpen] = useState(false);
@@ -22,20 +21,6 @@ export function TrucksPage() {
     const matchesStatus = statusFilter === 'all' || truck.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
-
-  const handleAddTruck = async (newTruck: any) => {
-    try {
-      await addTruck(newTruck);
-      setIsTruckModalOpen(false);
-    } catch (error) {
-      console.error('Failed to add truck:', error);
-      alert('فشل في إضافة الشاحنة. يرجى المحاولة مرة أخرى.');
-    }
-  };
-
-  const handleAddTrip = (newTrip: any) => {
-    trips.addTrip(newTrip);
-  };
 
   const handleExportExcel = () => {
     exportTrucksToExcel(filteredTrucks);
@@ -203,13 +188,13 @@ export function TrucksPage() {
       <AddTruckModal
         isOpen={isTruckModalOpen}
         onClose={() => setIsTruckModalOpen(false)}
-        onAdd={handleAddTruck}
+        onAdd={addTruck}
       />
 
       <AddTripModal
         isOpen={isTripModalOpen}
         onClose={() => setIsTripModalOpen(false)}
-        onAdd={handleAddTrip}
+        onAdd={trips.addTrip}
       />
     </Layout>
   );

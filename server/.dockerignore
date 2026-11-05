@@ -1,0 +1,8 @@
+# Keep build context small and never ship secrets or local state.
+node_modules/
+.git/
+dist/
+.env
+.env.local
+uploads/
+*.log

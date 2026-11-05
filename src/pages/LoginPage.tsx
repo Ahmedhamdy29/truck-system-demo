@@ -25,12 +25,6 @@ export function LoginPage() {
     }
   };
 
-  const handleDemoLogin = () => {
-    setCompanyCode('COMP001');
-    setUsername('admin');
-    setPassword('admin123');
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-teal-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
@@ -117,22 +111,10 @@ export function LoginPage() {
             >
               {isLoading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
             </button>
-
-            <button
-              type="button"
-              onClick={handleDemoLogin}
-              className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              تسجيل دخول تجريبي
-            </button>
           </div>
         </form>
 
         <div className="text-center">
-          <p className="text-xs text-gray-500 mb-4">
-            البيانات التجريبية: كود الشركة: COMP001، المستخدم: admin، كلمة المرور: admin123
-          </p>
-          
           <div className="border-t border-gray-200 pt-4">
             <p className="text-sm text-gray-600 mb-2">ليس لديك شركة مسجلة؟</p>
             <a

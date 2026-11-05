@@ -24,9 +24,16 @@ const checkUser = async () => {
         console.log('   Company ID:', user.company_id);
         console.log('   Role:', user.role);
 
-        // 3. Check Password
-        const isMatch = bcrypt.compareSync('admin123', user.password);
-        console.log('🔑 Password check (admin123):', isMatch ? 'MATCH ✅' : 'FAIL ❌');
+        // 3. Check Password — the password to test comes from the environment
+        // (SEED_ADMIN_PASSWORD) or the first CLI argument; it is never
+        // hardcoded in this file.
+        const passwordToCheck = process.env.SEED_ADMIN_PASSWORD || process.argv[2];
+        if (!passwordToCheck) {
+            console.log('⚠️  No password supplied to check: set SEED_ADMIN_PASSWORD or pass it as an argument.');
+            process.exit(0);
+        }
+        const isMatch = bcrypt.compareSync(passwordToCheck, user.password);
+        console.log('🔑 Password check:', isMatch ? 'MATCH ✅' : 'FAIL ❌');
 
         process.exit(0);
     } catch (err) {

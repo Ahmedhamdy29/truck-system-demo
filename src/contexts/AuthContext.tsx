@@ -1,21 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
-import { defaultAdmin } from '../data/mockData';
 import { authAPI } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
   login: (username: string, password: string, companyCode: string) => Promise<boolean>;
   logout: () => void;
-  updateProfile: (updates: Partial<User>) => void;
+  updateProfile: (updates: Partial<User>) => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// كلمة المرور الافتراضية
-// const defaultPassword = 'admin123';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -58,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setIsLoading(false);
       return false;
-    } catch (error) {
+    } catch {
       setIsLoading(false);
       return false;
     }
@@ -70,13 +66,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('auth_token');
   };
 
-  const updateProfile = (updates: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      localStorage.setItem('truck_system_user', JSON.stringify(updatedUser));
-      localStorage.setItem('admin_profile', JSON.stringify(updatedUser));
-    }
+  const updateProfile = async (updates: Partial<User>) => {
+    if (!user) return;
+    // ينادي الـ API فعلاً؛ عند الفشل يُرمى الخطأ ولا تتغير الحالة المحلية
+    const response = await authAPI.updateProfile(updates);
+    const updatedUser = response.user ?? { ...user, ...updates };
+    setUser(updatedUser);
+    localStorage.setItem('truck_system_user', JSON.stringify(updatedUser));
   };
 
   return (

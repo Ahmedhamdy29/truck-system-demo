@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Trip } from '../types';
-import { tripsAPI } from '../services/api';
+import { tripsAPI, ApiFilters } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useTrips() {
@@ -9,7 +9,7 @@ export function useTrips() {
   const [error, setError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
 
-  const fetchTrips = useCallback(async (filters?: any) => {
+  const fetchTrips = useCallback(async (filters?: ApiFilters) => {
     // Check if user is authenticated before making API call
     const token = localStorage.getItem('auth_token');
     if (!token) {

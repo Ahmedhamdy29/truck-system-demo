@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LogOut, User, Settings, Truck } from 'lucide-react';
+import { useState } from 'react';
+import { LogOut, User, Truck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProfileModal } from '../Modals/ProfileModal';
 

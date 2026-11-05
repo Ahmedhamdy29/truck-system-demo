@@ -1,21 +1,16 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout/Layout';
 import { StatCard } from '../components/Cards/StatCard';
 import { AddExpenseModal } from '../components/Modals/AddExpenseModal';
-import { DollarSign, TrendingUp, Fuel, Wrench, Receipt, Plus, Filter, Calendar, Download, FileSpreadsheet, Trash } from 'lucide-react';
+import { Fuel, Receipt, Plus, FileSpreadsheet, Trash } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { useExpenses } from '../hooks/useExpenses';
-import { useMaintenance } from '../hooks/useMaintenance';
+import { useData } from '../contexts/DataContext';
 import { exportExpensesToExcel } from '../utils/exportUtils';
-import { useTrucks } from '../hooks/useTrucks';
-import { useAuth } from '../contexts/AuthContext';
-import { expensesAPI } from '../services/api';
+import { Expense } from '../types';
 
 export function ExpensesPage() {
-  const { expenses, refetch } = useExpenses();
-  const { addMaintenanceRecord } = useMaintenance();
-  const { trucks } = useTrucks();
-  const { user } = useAuth();
+  const { expenses, trucks: trucksState } = useData();
+  const { trucks } = trucksState;
   const [selectedPeriod, setSelectedPeriod] = useState('this-month');
   const [selectedTruck, setSelectedTruck] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
@@ -24,34 +19,42 @@ export function ExpensesPage() {
   const [receiptImageSrc, setReceiptImageSrc] = useState<string | null>(null);
 
   // Calculate statistics
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const fuelExpenses = expenses.filter(e => e.type === 'fuel').reduce((sum, e) => sum + e.amount, 0);
-  const maintenanceExpenses = expenses.filter(e => e.type === 'maintenance').reduce((sum, e) => sum + e.amount, 0);
-  
-  // Calculate expenses by currency
-  const sarExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const fuelExpenses = expenses.expenses.filter(e => e.type === 'fuel').reduce((sum, e) => sum + e.amount, 0);
+  const maintenanceExpenses = expenses.expenses.filter(e => e.type === 'maintenance').reduce((sum, e) => sum + e.amount, 0);
 
-  // Monthly expenses data for chart
-  const monthlyData = [
-    { month: 'يناير', fuel: 0, maintenance: 0, fees: 0 },
-    { month: 'فبراير', fuel: 0, maintenance: 0, fees: 0 },
-    { month: 'مارس', fuel: 0, maintenance: 0, fees: 0 },
-    { month: 'أبريل', fuel: 0, maintenance: 0, fees: 0 },
-    { month: 'مايو', fuel: 0, maintenance: 0, fees: 0 },
-    { month: 'يونيو', fuel: 0, maintenance: 0, fees: 0 },
-  ];
+  // Calculate expenses by currency
+  const sarExpenses = expenses.expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Monthly expenses data for chart: مبالغ حقيقية لكل شهر من آخر 6 أشهر حسب النوع
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const monthlyData = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    const monthExpenses = expenses.expenses.filter(e => {
+      const expenseDate = new Date(e.date);
+      return expenseDate.getMonth() === d.getMonth() && expenseDate.getFullYear() === d.getFullYear();
+    });
+    const sumByType = (type: Expense['type']) =>
+      monthExpenses.filter(e => e.type === type).reduce((sum, e) => sum + e.amount, 0);
+    return {
+      month: monthNames[d.getMonth()],
+      fuel: sumByType('fuel'),
+      maintenance: sumByType('maintenance'),
+      fees: sumByType('fees')
+    };
+  });
 
   // Expense distribution data
   const expenseDistribution = [
     { name: 'وقود', value: fuelExpenses, color: '#3B82F6' },
     { name: 'صيانة', value: maintenanceExpenses, color: '#10B981' },
-    { name: 'رسوم', value: expenses.filter(e => e.type === 'fees').reduce((sum, e) => sum + e.amount, 0), color: '#F59E0B' },
-    { name: 'أخرى', value: expenses.filter(e => e.type === 'other').reduce((sum, e) => sum + e.amount, 0), color: '#EF4444' },
+    { name: 'رسوم', value: expenses.expenses.filter(e => e.type === 'fees').reduce((sum, e) => sum + e.amount, 0), color: '#F59E0B' },
+    { name: 'أخرى', value: expenses.expenses.filter(e => e.type === 'other').reduce((sum, e) => sum + e.amount, 0), color: '#EF4444' },
   ].filter(item => item.value > 0);
 
   // دالة محلية لحساب مجموع مصاريف شاحنة
   const getTotalExpensesByTruck = (truckId: string) => {
-    return expenses.filter(e => e.truckId === truckId).reduce((sum, e) => sum + e.amount, 0);
+    return expenses.expenses.filter(e => e.truckId === truckId).reduce((sum, e) => sum + e.amount, 0);
   };
 
   // Truck expenses data
@@ -66,7 +69,7 @@ export function ExpensesPage() {
   }
 
   // فلترة المصاريف حسب الفترة الزمنية مع مقارنة دقيقة للتواريخ
-  const getFilteredByPeriod = (expenses: any[]) => {
+  const getFilteredByPeriod = (list: Expense[]) => {
     const now = new Date();
     let startDate = new Date(0);
     let endDate = new Date();
@@ -101,30 +104,18 @@ export function ExpensesPage() {
     startDate = normalizeDate(startDate);
     endDate = normalizeDate(endDate);
 
-    return expenses.filter(e => {
+    return list.filter(e => {
       const expenseDate = normalizeDate(new Date(e.date));
       return expenseDate >= startDate && expenseDate <= endDate;
     });
   };
 
-  // استخدم الفلترة الزمنية مع باقي الفلاتر
-  const filteredExpenses = getFilteredByPeriod(expenses).filter(expense => {
-    if (user?.role === 'driver') {
-      return expense.truckId === user.truckId;
-    }
+  // استخدم الفلترة الزمنية مع باقي الفلاتر (الصفحة لا يصل إليها السائق أصلاً، فلا فلتر خاص به هنا)
+  const filteredExpenses = getFilteredByPeriod(expenses.expenses).filter(expense => {
     const matchesTruck = selectedTruck === 'all' || expense.truckId === selectedTruck;
     const matchesType = selectedType === 'all' || expense.type === selectedType;
     return matchesTruck && matchesType;
   });
-
-  const handleAddExpense = async (newExpense: any) => {
-    await expensesAPI.create(newExpense); // إضافة المصروف في قاعدة البيانات
-    await refetch(); // تحديث البيانات في الجدول
-  };
-
-  const handleAddMaintenance = async (newMaintenance: any) => {
-    await addMaintenanceRecord(newMaintenance);
-  };
 
   const handleExportExcel = () => {
     exportExpensesToExcel(filteredExpenses, trucks);
@@ -133,8 +124,11 @@ export function ExpensesPage() {
   // أضف دالة حذف مصروف
   const handleDeleteExpense = async (expenseId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
-      await expensesAPI.delete(expenseId);
-      await refetch();
+      try {
+        await expenses.deleteExpense(expenseId);
+      } catch {
+        alert('تعذر حذف المصروف، يرجى المحاولة مجدداً');
+      }
     }
   };
 
@@ -271,31 +265,13 @@ export function ExpensesPage() {
           </div>
         )}
 
-        {/* Truck Expenses Chart - مخفي مؤقتاً */}
-        {/* {truckExpenses.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">مصاريف الشاحنات</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={truckExpenses}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="truck" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="amount" fill="#8B5CF6" name="المبلغ (ريال)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )} */}
-
         {/* Expenses List */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">تفاصيل المصاريف</h3>
               <span className="text-sm text-gray-500">
-                عرض {filteredExpenses.length} من أصل {expenses.length} مصروف
+                عرض {filteredExpenses.length} من أصل {expenses.expenses.length} مصروف
               </span>
             </div>
           </div>
@@ -394,8 +370,7 @@ export function ExpensesPage() {
       <AddExpenseModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddExpense}
-        onAddMaintenance={handleAddMaintenance}
+        onAdd={expenses.addExpense}
       />
     </Layout>
   );

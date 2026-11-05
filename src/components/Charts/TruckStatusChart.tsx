@@ -1,9 +1,17 @@
-import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { Truck } from '../../types';
 
 interface TruckStatusChartProps {
   trucks: Truck[];
+}
+
+interface PieLabelProps {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  percent?: number;
 }
 
 export function TruckStatusChart({ trucks }: TruckStatusChartProps) {
@@ -13,7 +21,7 @@ export function TruckStatusChart({ trucks }: TruckStatusChartProps) {
     { name: 'صيانة', value: trucks.filter(t => t.status === 'maintenance').length, color: '#F59E0B' },
   ].filter(item => item.value > 0);
 
-  const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  const renderCustomLabel = ({ cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRadius = 0, percent = 0 }: PieLabelProps) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
     const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);

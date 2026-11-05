@@ -1,32 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout/Layout';
-import { usersAPI, trucksAPI } from '../services/api';
-import { User, Truck } from '../types';
+import { useData } from '../contexts/DataContext';
+import { User } from '../types';
 
 export default function DriversPage() {
-  const [drivers, setDrivers] = useState<User[]>([]);
-  const [trucks, setTrucks] = useState<Truck[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { users: usersState, trucks: trucksState } = useData();
+  const { users, loading: usersLoading, error, updateUser, deleteUser, refetch } = usersState;
+  const { trucks, loading: trucksLoading } = trucksState;
+  const loading = usersLoading || trucksLoading;
   const [editDriver, setEditDriver] = useState<User | null>(null);
   const [editTruckId, setEditTruckId] = useState<string>('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDrivers();
-    fetchTrucks();
-  }, []);
-
-  const fetchDrivers = async () => {
-    setLoading(true);
-    const all = await usersAPI.getAll();
-    setDrivers(all.filter((u: User) => u.role === 'driver'));
-    setLoading(false);
-  };
-  const fetchTrucks = async () => {
-    const all = await trucksAPI.getAll();
-    setTrucks(all);
-  };
+  const drivers = users.filter(u => u.role === 'driver');
 
   const handleEdit = (driver: User) => {
     setEditDriver(driver);
@@ -40,14 +27,20 @@ export default function DriversPage() {
       alert('يجب اختيار شاحنة صحيحة من القائمة');
       return;
     }
-    await usersAPI.update(editDriver.id, { truckId: editTruckId });
-    setShowEditModal(false);
-    fetchDrivers();
+    try {
+      await updateUser(editDriver.id, { truckId: editTruckId });
+      setShowEditModal(false);
+    } catch {
+      alert('تعذر حفظ التعديل، يرجى المحاولة مجدداً');
+    }
   };
   const handleDelete = async (id: string) => {
-    await usersAPI.delete(id);
-    setShowDeleteId(null);
-    fetchDrivers();
+    try {
+      await deleteUser(id);
+      setShowDeleteId(null);
+    } catch {
+      alert('تعذر حذف السائق، يرجى المحاولة مجدداً');
+    }
   };
 
   return (
@@ -56,6 +49,16 @@ export default function DriversPage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-4">قائمة السائقين</h2>
         {loading ? (
           <div>جاري التحميل...</div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <p className="text-red-600 mb-4">تعذر تحميل السائقين: {error}</p>
+            <button
+              onClick={() => refetch()}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full bg-white rounded-xl border border-gray-200">
@@ -86,6 +89,9 @@ export default function DriversPage() {
                 })}
               </tbody>
             </table>
+            {drivers.length === 0 && (
+              <p className="text-gray-500 text-center py-8">لا يوجد سائقون مسجلون</p>
+            )}
           </div>
         )}
 
@@ -131,4 +137,4 @@ export default function DriversPage() {
       </div>
     </Layout>
   );
-} 
+}

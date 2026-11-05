@@ -1,48 +1,60 @@
-import React, { useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout/Layout';
 import { AddExpenseModal } from '../components/Modals/AddExpenseModal';
 import { AddMaintenanceModal } from '../components/Modals/AddMaintenanceModal';
 import { AddTripModal } from '../components/Modals/AddTripModal';
-import { useTrucks } from '../hooks/useTrucks';
+import { AddTruckModal } from '../components/Modals/AddTruckModal';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Truck as TruckIcon, 
-  MapPin, 
-  Calendar, 
-  Wrench, 
-  DollarSign, 
-  Edit, 
+import {
+  Truck as TruckIcon,
+  MapPin,
+  Wrench,
+  DollarSign,
+  Edit,
   Plus,
   Route,
-  Fuel,
-  Settings,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2
 } from 'lucide-react';
 import { exportExpensesToExcel } from '../utils/exportUtils';
 
 export function TruckDetailPage() {
   const { id } = useParams();
-  const { expenses, maintenance, trips } = useData();
+  const navigate = useNavigate();
+  const { expenses, maintenance, trips, trucks: trucksState } = useData();
+  const { trucks, loading, addTruck, updateTruck, deleteTruck } = trucksState;
   const [activeTab, setActiveTab] = useState('details');
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
+  const [isEditTruckModalOpen, setIsEditTruckModalOpen] = useState(false);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptImageSrc, setReceiptImageSrc] = useState<string | null>(null);
   const [isUpdateTripModalOpen, setIsUpdateTripModalOpen] = useState(false);
   const [tripUpdateType, setTripUpdateType] = useState<'completed' | 'delayed' | ''>('');
   const [delayReason, setDelayReason] = useState('');
-  
-  const { trucks, loading } = useTrucks();
+
   const truck = trucks.find(t => t.id === id);
   const { user } = useAuth();
-  
-  // Debugging output
-  // console.log('user.truckId:', user?.truckId);
-  // console.log('trucks:', trucks);
-  // console.log('id from URL:', id);
+
+  // استخراج الرحلة النشطة لهذه الشاحنة من قائمة الرحلات
+  // (الخادم لا يملأ truck.currentTrip، فالاعتماد عليه كان يعطّل زر التحديث بصمت)
+  const truckTrips = trips.getTripsByTruck(id!);
+  const currentTrip = truckTrips.find(trip => trip.status === 'active');
+
+  // سائق بلا شاحنة مربوطة: رسالة واضحة بدل التوجيه لـ /trucks/undefined
+  if (user?.role === 'driver' && !user.truckId) {
+    return (
+      <Layout title="شاحنتي">
+        <div className="text-center py-16">
+          <p className="text-lg font-medium text-gray-900 mb-2">لم يتم ربط شاحنة بحسابك، تواصل مع المدير</p>
+          <p className="text-gray-500">لا يمكنك عرض أي شاحنة حتى يربط المدير شاحنة بحسابك.</p>
+        </div>
+      </Layout>
+    );
+  }
 
   // Prevent driver from accessing other trucks' pages
   if (user?.role === 'driver' && id !== user.truckId) {
@@ -63,10 +75,6 @@ export function TruckDetailPage() {
   const truckExpenses = expenses.getExpensesByTruck(id!);
   const truckMaintenance = maintenance.getMaintenanceByTruck(id!);
   const totalExpenses = expenses.getTotalExpensesByTruck(id!);
-
-  // استخراج الرحلة النشطة لهذه الشاحنة
-  const truckTrips = trips.getTripsByTruck(id!);
-  const currentTrip = truckTrips.find(trip => trip.status === 'active');
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -93,22 +101,107 @@ export function TruckDetailPage() {
     { id: 'maintenance', label: 'الصيانة', icon: Wrench },
   ];
 
-  const handleAddExpense = (newExpense: any) => {
-    expenses.addExpense(newExpense);
-  };
-
-  const handleAddMaintenance = async (newMaintenance: any) => {
+  const handleDeleteTruck = async () => {
+    if (!window.confirm(`هل أنت متأكد من حذف الشاحنة ${truck.number}؟ لا يمكن التراجع.`)) return;
     try {
-      await maintenance.addMaintenanceRecord(newMaintenance);
-      setIsMaintenanceModalOpen(false);
-    } catch (err) {
-      alert('حدث خطأ أثناء إضافة الصيانة. يرجى المحاولة مرة أخرى.');
+      await deleteTruck(truck.id);
+      navigate('/trucks');
+    } catch {
+      alert('تعذر حذف الشاحنة، يرجى المحاولة مجدداً');
     }
   };
 
-  const handleAddTrip = (newTrip: any) => {
-    trips.addTrip(newTrip);
+  const handleCompleteTrip = async () => {
+    if (!currentTrip) return;
+    if (!window.confirm('هل أنت متأكد من إنهاء هذه الرحلة؟')) return;
+    try {
+      await trips.completeTrip(currentTrip.id);
+    } catch {
+      alert('تعذر إنهاء الرحلة، يرجى المحاولة مجدداً');
+    }
   };
+
+  // مودال تحديث الرحلة (مشترك بين واجهة المدير وواجهة السائق) —
+  // يعمل على currentTrip المشتقة من قائمة الرحلات، لا على truck.currentTrip
+  const updateTripModal = isUpdateTripModalOpen && currentTrip && (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full">
+        <h2 className="text-xl font-bold mb-4 text-gray-900">تحديث حالة الرحلة</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="block mb-2 font-medium">اختر الحالة:</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="tripUpdateType"
+                  value="completed"
+                  checked={tripUpdateType === 'completed'}
+                  onChange={() => setTripUpdateType('completed')}
+                />
+                تم الوصول
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="tripUpdateType"
+                  value="delayed"
+                  checked={tripUpdateType === 'delayed'}
+                  onChange={() => setTripUpdateType('delayed')}
+                />
+                تأخر بسبب
+              </label>
+            </div>
+          </div>
+          {tripUpdateType === 'delayed' && (
+            <div>
+              <label className="block mb-2 font-medium">سبب التأخير:</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                value={delayReason}
+                onChange={e => setDelayReason(e.target.value)}
+                placeholder="اكتب سبب التأخير..."
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button
+            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700"
+            onClick={async () => {
+              if (!tripUpdateType) return;
+              try {
+                if (tripUpdateType === 'completed') {
+                  await trips.completeTrip(currentTrip.id);
+                } else if (tripUpdateType === 'delayed') {
+                  await trips.updateTrip(currentTrip.id, { status: 'delayed', delayReason });
+                }
+                setIsUpdateTripModalOpen(false);
+                setTripUpdateType('');
+                setDelayReason('');
+              } catch {
+                alert('تعذر تحديث الرحلة، يرجى المحاولة مجدداً');
+              }
+            }}
+            disabled={tripUpdateType === 'delayed' && !delayReason}
+          >
+            حفظ
+          </button>
+          <button
+            className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300"
+            onClick={() => {
+              setIsUpdateTripModalOpen(false);
+              setTripUpdateType('');
+              setDelayReason('');
+            }}
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   // تخصيص واجهة السائق: عرض كل شيء في شاشة واحدة مبسطة
   if (user?.role === 'driver') {
@@ -203,13 +296,15 @@ export function TruckDetailPage() {
                     </div>
                     <div className="flex items-center space-x-2 rtl:space-x-reverse mt-2 md:mt-0">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${trip.status === 'active' ? 'bg-blue-100 text-blue-800' : trip.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{trip.status === 'active' ? 'نشطة' : trip.status === 'completed' ? 'مكتملة' : 'متأخرة'}</span>
-                      <button
-                        onClick={() => setIsTripModalOpen(true)}
-                        className="flex items-center space-x-1 rtl:space-x-reverse px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
-                      >
-                        <Edit className="h-3 w-3" />
-                        <span>تحديث</span>
-                      </button>
+                      {trip.status === 'active' && (
+                        <button
+                          onClick={() => setIsUpdateTripModalOpen(true)}
+                          className="flex items-center space-x-1 rtl:space-x-reverse px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                        >
+                          <Edit className="h-3 w-3" />
+                          <span>تحديث</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -223,17 +318,11 @@ export function TruckDetailPage() {
           <AddExpenseModal
             isOpen={isExpenseModalOpen}
             onClose={() => setIsExpenseModalOpen(false)}
-            onAdd={handleAddExpense}
-            onAddMaintenance={handleAddMaintenance}
+            onAdd={expenses.addExpense}
             selectedTruckId={id}
           />
           {/* مودال تحديث الرحلة */}
-          <AddTripModal
-            isOpen={isTripModalOpen}
-            onClose={() => setIsTripModalOpen(false)}
-            onAdd={handleAddTrip}
-            selectedTruckId={id}
-          />
+          {updateTripModal}
         </div>
       </Layout>
     );
@@ -260,6 +349,24 @@ export function TruckDetailPage() {
             <div className="text-left rtl:text-right">
               <p className="text-2xl font-bold text-purple-600">{totalExpenses.toLocaleString()} ر.س</p>
               <p className="text-sm text-gray-500">إجمالي المصاريف</p>
+              {user?.role === 'admin' && (
+                <div className="flex items-center space-x-2 rtl:space-x-reverse mt-3">
+                  <button
+                    onClick={() => setIsEditTruckModalOpen(true)}
+                    className="flex items-center space-x-1 rtl:space-x-reverse px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm"
+                  >
+                    <Edit className="h-4 w-4" />
+                    <span>تعديل الشاحنة</span>
+                  </button>
+                  <button
+                    onClick={handleDeleteTruck}
+                    className="flex items-center space-x-1 rtl:space-x-reverse px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>حذف الشاحنة</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -364,13 +471,21 @@ export function TruckDetailPage() {
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-semibold text-gray-900">الرحلة الحالية</h3>
                       {(user?.role === 'admin' || user?.role === 'driver') && (
-                        <button
-                          className="flex items-center space-x-2 rtl:space-x-reverse px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                          onClick={() => setIsUpdateTripModalOpen(true)}
-                        >
-                          <Edit className="h-4 w-4" />
-                          <span>تحديث الرحلة</span>
-                        </button>
+                        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                          <button
+                            className="flex items-center space-x-2 rtl:space-x-reverse px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            onClick={() => setIsUpdateTripModalOpen(true)}
+                          >
+                            <Edit className="h-4 w-4" />
+                            <span>تحديث الرحلة</span>
+                          </button>
+                          <button
+                            className="flex items-center space-x-2 rtl:space-x-reverse px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                            onClick={handleCompleteTrip}
+                          >
+                            <span>إنهاء الرحلة</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                     
@@ -534,7 +649,15 @@ export function TruckDetailPage() {
                             {new Date(maintenanceRecord.date).toLocaleDateString('ar')}
                           </p>
                           <button
-                            onClick={() => maintenance.deleteMaintenanceRecord(maintenanceRecord.id)}
+                            onClick={async () => {
+                              if (window.confirm('هل أنت متأكد من حذف سجل الصيانة؟')) {
+                                try {
+                                  await maintenance.deleteMaintenanceRecord(maintenanceRecord.id);
+                                } catch {
+                                  alert('تعذر حذف سجل الصيانة، يرجى المحاولة مجدداً');
+                                }
+                              }
+                            }}
                             className="text-red-600 hover:text-red-800 px-2 py-1 rounded transition-colors border border-red-200 bg-red-50 text-xs"
                           >
                             حذف
@@ -566,101 +689,34 @@ export function TruckDetailPage() {
       <AddExpenseModal
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
-        onAdd={handleAddExpense}
+        onAdd={expenses.addExpense}
         selectedTruckId={id}
       />
 
       <AddMaintenanceModal
         isOpen={isMaintenanceModalOpen}
         onClose={() => setIsMaintenanceModalOpen(false)}
-        onAdd={handleAddMaintenance}
+        onAdd={maintenance.addMaintenanceRecord}
         selectedTruckId={id}
       />
 
       <AddTripModal
         isOpen={isTripModalOpen}
         onClose={() => setIsTripModalOpen(false)}
-        onAdd={handleAddTrip}
+        onAdd={trips.addTrip}
         selectedTruckId={id}
       />
 
+      <AddTruckModal
+        isOpen={isEditTruckModalOpen}
+        onClose={() => setIsEditTruckModalOpen(false)}
+        onAdd={addTruck}
+        initialTruck={truck}
+        onUpdate={updateTruck}
+      />
+
       {/* Modal تحديث الرحلة */}
-      {isUpdateTripModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4 text-gray-900">تحديث حالة الرحلة</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block mb-2 font-medium">اختر الحالة:</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="tripUpdateType"
-                      value="completed"
-                      checked={tripUpdateType === 'completed'}
-                      onChange={() => setTripUpdateType('completed')}
-                    />
-                    تم الوصول
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="tripUpdateType"
-                      value="delayed"
-                      checked={tripUpdateType === 'delayed'}
-                      onChange={() => setTripUpdateType('delayed')}
-                    />
-                    تأخر بسبب
-                  </label>
-                </div>
-              </div>
-              {tripUpdateType === 'delayed' && (
-                <div>
-                  <label className="block mb-2 font-medium">سبب التأخير:</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    value={delayReason}
-                    onChange={e => setDelayReason(e.target.value)}
-                    placeholder="اكتب سبب التأخير..."
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700"
-                onClick={async () => {
-                  if (!tripUpdateType || !truck.currentTrip) return;
-                  if (tripUpdateType === 'completed') {
-                    await trips.updateTrip(truck.currentTrip.id, { status: 'completed', actualEndDate: new Date().toISOString() });
-                  } else if (tripUpdateType === 'delayed') {
-                    await trips.updateTrip(truck.currentTrip.id, { status: 'delayed', delayReason });
-                  }
-                  setIsUpdateTripModalOpen(false);
-                  setTripUpdateType('');
-                  setDelayReason('');
-                  await trips.refetch();
-                }}
-                disabled={tripUpdateType === 'delayed' && !delayReason}
-              >
-                حفظ
-              </button>
-              <button
-                className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300"
-                onClick={() => {
-                  setIsUpdateTripModalOpen(false);
-                  setTripUpdateType('');
-                  setDelayReason('');
-                }}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {updateTripModal}
     </Layout>
   );
 }

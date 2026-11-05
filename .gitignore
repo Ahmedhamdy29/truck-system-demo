@@ -28,6 +28,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Vite timestamped config copies (build artifacts, must not be committed)
+vite.config.ts.timestamp-*
+
 # IDE files
 .vscode/
 .idea/

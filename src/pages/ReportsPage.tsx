@@ -1,49 +1,25 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout/Layout';
 import { StatCard } from '../components/Cards/StatCard';
-import { 
-  FileText, 
-  TrendingUp, 
-  Fuel, 
-  Users, 
-  Calendar, 
-  DollarSign, 
+import {
+  FileText,
+  TrendingUp,
+  Calendar,
+  DollarSign,
   Download,
-  Filter,
-  BarChart3,
-  PieChart,
-  Activity
+  BarChart3
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  PieChart as RechartsPieChart, 
-  Pie, 
-  Cell,
-  LineChart,
-  Line,
-  AreaChart,
-  Area
-} from 'recharts';
 import { useData } from '../contexts/DataContext';
-import { useTrucks } from '../hooks/useTrucks';
-import { useAuth } from '../contexts/AuthContext';
-import { 
-  exportPerformanceReport, 
+import {
+  exportPerformanceReport,
   exportProfitabilityReport, // Keep this import
-  exportFuelReport, 
-  exportDriverReport 
+  exportFuelReport,
+  exportDriverReport
 } from '../utils/exportUtils';
 
 export function ReportsPage() {
-  const { expenses, maintenance, trips } = useData();
-  const { trucks } = useTrucks();
-  const { user } = useAuth();
+  const { expenses, maintenance, trips, trucks: trucksState } = useData();
+  const { trucks } = trucksState;
   const [selectedReport, setSelectedReport] = useState('performance');
   const [selectedPeriod, setSelectedPeriod] = useState('this-month');
   const [selectedTruck, setSelectedTruck] = useState('all');
@@ -119,7 +95,7 @@ export function ReportsPage() {
   const filteredData = getFilteredData();
 
   // إحصائيات عامة
-  const calculateAmount = (value: any): number => {
+  const calculateAmount = (value: number | string): number => {
     if (typeof value === 'number') return value;
     if (typeof value === 'string') {
       const parsed = parseFloat(value.replace(/[^\d.-]/g, ''));
@@ -137,19 +113,6 @@ export function ReportsPage() {
 
   const totalTrips = filteredData.trips.length;
   const completedTrips = filteredData.trips.filter(t => t.status === 'completed').length;
-  const activeTrucks = trucks.filter(t => t.status === 'in-trip').length;
-
-  // حساب الأداء الشهري ديناميكيًا
-  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  const monthlyPerformanceData = months.map((month, i) => {
-    const monthExpenses = filteredData.expenses
-        .filter(e => new Date(e.date).getMonth() === i && 
-                     new Date(e.date).getFullYear() === new Date().getFullYear())
-        .reduce((sum, e) => sum + calculateAmount(e.amount), 0);
-    const monthMaintenance = filteredData.maintenance.filter(m => new Date(m.date).getMonth() === i).reduce((sum, m) => sum + m.cost, 0);
-    const monthTrips = filteredData.trips.filter(t => new Date(t.startDate).getMonth() === i).length;
-    return { month, expenses: monthExpenses, maintenance: monthMaintenance, trips: monthTrips };
-  });
 
   // تقرير ربحية الشاحنات منفصل حسب العملة
   const truckProfitability = trucks.map(truck => {
@@ -270,55 +233,6 @@ export function ReportsPage() {
         />
       </div>
 
-      {/* 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">الأداء الشهري</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyPerformanceData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="expenses" fill="#8B5CF6" name="المصاريف" />
-                <Bar dataKey="maintenance" fill="#EF4444" name="الصيانة" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">توزيع المصاريف</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsPieChart>
-                <Pie
-                  data={[
-                    { name: 'مصاريف عامة', value: totalExpenses - totalMaintenanceCost, color: '#3B82F6' },
-                    { name: 'صيانة', value: totalMaintenanceCost, color: '#EF4444' }
-                  ]}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                >
-                  {[
-                    { name: 'مصاريف عامة', value: totalExpenses - totalMaintenanceCost, color: '#3B82F6' },
-                    { name: 'صيانة', value: totalMaintenanceCost, color: '#EF4444' }
-                  ].map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </RechartsPieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-      */}
     </div>
   );
 

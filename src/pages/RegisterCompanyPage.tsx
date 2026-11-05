@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { Truck, Building, User, Lock, Mail, Phone, MapPin, Eye, EyeOff } from 'lucide-react';
+import { Building, User, Lock, Mail, Phone, MapPin, Eye, EyeOff } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 export function RegisterCompanyPage() {
@@ -37,7 +36,7 @@ export function RegisterCompanyPage() {
     setIsLoading(true);
 
     try {
-      const response = await authAPI.registerCompany(formData);
+      await authAPI.registerCompany(formData);
       setSuccess('تم إنشاء الشركة بنجاح! يمكنك الآن تسجيل الدخول.');
       setFormData({
         name: '',
@@ -50,8 +49,8 @@ export function RegisterCompanyPage() {
         adminName: '',
         adminEmail: ''
       });
-    } catch (error: any) {
-      setError(error.message || 'حدث خطأ أثناء إنشاء الشركة');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'حدث خطأ أثناء إنشاء الشركة');
     } finally {
       setIsLoading(false);
     }

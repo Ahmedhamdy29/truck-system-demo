@@ -1,18 +1,13 @@
-import React from 'react';
-import { DivideIcon as LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface StatCardProps {
   title: string;
   value: string | number;
   icon: LucideIcon;
-  change?: {
-    value: number;
-    type: 'increase' | 'decrease';
-  };
   color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple';
 }
 
-export function StatCard({ title, value, icon: Icon, change, color = 'blue' }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, color = 'blue' }: StatCardProps) {
   const colorClasses = {
     blue: 'bg-blue-500 text-white',
     green: 'bg-green-500 text-white',
@@ -28,18 +23,6 @@ export function StatCard({ title, value, icon: Icon, change, color = 'blue' }: S
           <div>
             <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
             <p className="text-3xl font-bold text-gray-900">{value}</p>
-            {change && (
-              <div className="flex items-center mt-2">
-                <span
-                  className={`text-sm font-medium ${
-                    change.type === 'increase' ? 'text-green-600' : 'text-red-600'
-                  }`}
-                >
-                  {change.type === 'increase' ? '+' : '-'}{Math.abs(change.value)}%
-                </span>
-                <span className="text-sm text-gray-500 mr-2">من الشهر الماضي</span>
-              </div>
-            )}
           </div>
           <div className={`p-3 rounded-full ${colorClasses[color]}`}>
             <Icon className="h-6 w-6" />

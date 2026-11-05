@@ -1,50 +1,59 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Wrench } from 'lucide-react';
-import { useTrucks } from '../../hooks/useTrucks';
+import { useData } from '../../contexts/DataContext';
+import { CreateMaintenancePayload } from '../../services/api';
 
 interface AddMaintenanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (maintenance: any) => void;
+  onAdd: (maintenance: CreateMaintenancePayload) => Promise<unknown>;
   selectedTruckId?: string;
 }
 
-export function AddMaintenanceModal({ isOpen, onClose, onAdd, selectedTruckId }: AddMaintenanceModalProps) {
-  const [formData, setFormData] = useState({
-    truckId: selectedTruckId || '',
-    type: 'periodic',
-    date: new Date().toISOString().split('T')[0],
-    cost: '',
-    description: '',
-    nextDue: ''
-  });
+const emptyForm = {
+  truckId: '',
+  type: 'periodic' as 'periodic' | 'tire-check' | 'oil-change' | 'comprehensive',
+  date: new Date().toISOString().split('T')[0],
+  cost: '',
+  description: '',
+  nextDue: ''
+};
 
-  const { trucks, loading } = useTrucks();
+export function AddMaintenanceModal({ isOpen, onClose, onAdd, selectedTruckId }: AddMaintenanceModalProps) {
+  const [formData, setFormData] = useState(emptyForm);
+  const [error, setError] = useState('');
+
+  // مزامنة الشاحنة المختارة مسبقاً عند كل فتح للمودال
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(prev => ({ ...prev, truckId: selectedTruckId || prev.truckId }));
+      setError('');
+    }
+  }, [isOpen, selectedTruckId]);
+
+  const { trucks: trucksState } = useData();
+  const { trucks, loading } = trucksState;
   const selectableTrucks = trucks.filter(truck => truck.status === 'available' || truck.status === 'in-trip');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newMaintenance = {
-      id: Date.now().toString(),
-      truckId: formData.truckId,
-      type: formData.type as 'periodic' | 'tire-check' | 'oil-change' | 'comprehensive',
-      date: formData.date,
-      cost: parseFloat(formData.cost),
-      description: formData.description,
-      nextDue: formData.nextDue || null
-    };
+    setError('');
+    try {
+      const newMaintenance: CreateMaintenancePayload = {
+        truckId: formData.truckId,
+        type: formData.type,
+        date: formData.date,
+        cost: parseFloat(formData.cost),
+        description: formData.description,
+        nextDue: formData.nextDue || undefined
+      };
 
-    onAdd(newMaintenance);
-    setFormData({
-      truckId: selectedTruckId || '',
-      type: 'periodic',
-      date: new Date().toISOString().split('T')[0],
-      cost: '',
-      description: '',
-      nextDue: ''
-    });
-    onClose();
+      await onAdd(newMaintenance);
+      setFormData({ ...emptyForm, truckId: selectedTruckId || '' });
+      onClose();
+    } catch {
+      setError('تعذر إضافة الصيانة، يرجى المحاولة مجدداً');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -74,6 +83,11 @@ export function AddMaintenanceModal({ isOpen, onClose, onAdd, selectedTruckId }:
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               الشاحنة *

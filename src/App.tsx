@@ -1,8 +1,8 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { Layout } from './components/Layout/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterCompanyPage } from './pages/RegisterCompanyPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -13,12 +13,28 @@ import { MaintenancePage } from './pages/MaintenancePage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import DriversPage from './pages/DriversPage';
 import { useAuth } from './contexts/AuthContext';
 
 function AppRoutes() {
   const { user } = useAuth();
   if (user?.role === 'driver') {
+    // سائق بلا شاحنة مربوطة: رسالة واضحة بدل التوجيه لـ /trucks/undefined
+    if (!user.truckId) {
+      return (
+        <Routes>
+          <Route path="*" element={
+            <Layout title="شاحنتي">
+              <div className="text-center py-16">
+                <p className="text-lg font-medium text-gray-900 mb-2">لم يتم ربط شاحنة بحسابك، تواصل مع المدير</p>
+                <p className="text-gray-500">لا يمكنك عرض أي شاحنة حتى يربط المدير شاحنة بحسابك.</p>
+              </div>
+            </Layout>
+          } />
+        </Routes>
+      );
+    }
     return (
       <Routes>
         <Route path="/trucks/:id" element={<TruckDetailPage />} />
@@ -70,7 +86,12 @@ function AppRoutes() {
                 <SettingsPage />
               </ProtectedRoute>
             } />
-      <Route path="/drivers" element={<ProtectedRoute><DriversPage /></ProtectedRoute>} />
+      <Route path="/drivers" element={<ProtectedRoute adminOnly><DriversPage /></ProtectedRoute>} />
+      <Route path="*" element={
+        <ProtectedRoute>
+          <NotFoundPage />
+        </ProtectedRoute>
+      } />
           </Routes>
   );
 }

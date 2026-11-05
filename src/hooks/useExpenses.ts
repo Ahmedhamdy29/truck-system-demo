@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Expense } from '../types';
-import { expensesAPI } from '../services/api';
+import { expensesAPI, ApiFilters } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useExpenses() {
@@ -9,7 +9,7 @@ export function useExpenses() {
   const [error, setError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
 
-  const fetchExpenses = useCallback(async (filters?: any) => {
+  const fetchExpenses = useCallback(async (filters?: ApiFilters) => {
     // Check if user is authenticated before making API call
     const token = localStorage.getItem('auth_token');
     if (!token) {

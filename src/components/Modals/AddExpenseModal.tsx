@@ -1,37 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, DollarSign } from 'lucide-react';
-import { useTrucks } from '../../hooks/useTrucks';
+import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { CreateExpensePayload } from '../../services/api';
 
 interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (expense: any) => void;
-  onAddMaintenance?: (maintenance: any) => void; // New prop for maintenance
+  onAdd: (expense: CreateExpensePayload) => Promise<unknown>;
   selectedTruckId?: string;
 }
 
-export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, selectedTruckId }: AddExpenseModalProps) {
-  const { user } = useAuth();
-  const [formData, setFormData] = useState({
-    truckId: selectedTruckId || '',
-    type: 'fuel',
-    amount: '',
-    currency: 'SAR' as 'SAR' | 'EGP',
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    category: 'تشغيلية',
-    receiptImage: null as string | null,
-  });
-  const [maintenanceType, setMaintenanceType] = useState('periodic');
-  const maintenanceTypes = [
-    { value: 'periodic', label: 'صيانة دورية' },
-    { value: 'tire-check', label: 'فحص الإطارات' },
-    { value: 'oil-change', label: 'تغيير زيت' },
-    { value: 'comprehensive', label: 'فحص شامل' },
-  ];
+const emptyForm = {
+  truckId: '',
+  type: 'fuel' as 'fuel' | 'fees' | 'other',
+  amount: '',
+  date: new Date().toISOString().split('T')[0],
+  description: '',
+  category: 'تشغيلية',
+  receiptImage: null as string | null,
+};
 
-  const { trucks, loading } = useTrucks();
+export function AddExpenseModal({ isOpen, onClose, onAdd, selectedTruckId }: AddExpenseModalProps) {
+  const { user } = useAuth();
+  const [formData, setFormData] = useState(emptyForm);
+  const [error, setError] = useState('');
+
+  // مزامنة الشاحنة المختارة مسبقاً عند كل فتح للمودال
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(prev => ({ ...prev, truckId: selectedTruckId || prev.truckId }));
+      setError('');
+    }
+  }, [isOpen, selectedTruckId]);
+
+  const { trucks: trucksState } = useData();
+  const { trucks, loading } = trucksState;
   const selectableTrucks = trucks.filter(truck => truck.status === 'available' || truck.status === 'in-trip');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,67 +49,29 @@ export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, sele
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const truckIdToSend = user?.role === 'driver' ? user.truckId : formData.truckId;
-    
-    // If it's a maintenance expense, create both expense and maintenance record
-    if (formData.type === 'maintenance' && onAddMaintenance) {
-      // Create maintenance record
-      const maintenanceRecord = {
-        id: Date.now().toString(),
-        truckId: truckIdToSend,
-        type: maintenanceType as 'periodic' | 'tire-check' | 'oil-change' | 'comprehensive',
-        date: formData.date,
-        cost: parseFloat(formData.amount),
-        description: formData.description,
-        nextDue: null
-      };
-      
-      // Add maintenance record
-      onAddMaintenance(maintenanceRecord);
-      
-      // Don't add to expenses - maintenance costs are tracked separately
-      setFormData({
-        truckId: selectedTruckId || '',
-        type: 'fuel',
-        amount: '',
+    setError('');
+    try {
+      const truckIdToSend = user?.role === 'driver' ? user.truckId : formData.truckId;
+
+      // العملة مثبتة SAR فقط، وتوليد الـ id من مسؤولية الخادم
+      const newExpense: CreateExpensePayload = {
+        truckId: truckIdToSend ?? '',
+        type: formData.type,
+        amount: parseFloat(formData.amount),
         currency: 'SAR',
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        category: 'تشغيلية',
-        receiptImage: null,
-      });
-      setMaintenanceType('periodic');
+        date: formData.date,
+        description: formData.description,
+        category: formData.category,
+        receiptImage: formData.receiptImage || null,
+      };
+      await onAdd(newExpense);
+      setFormData({ ...emptyForm, truckId: selectedTruckId || '' });
       onClose();
-      return;
+    } catch {
+      setError('تعذر إضافة المصروف، يرجى المحاولة مجدداً');
     }
-    
-    // For non-maintenance expenses, proceed as normal
-    const newExpense = {
-      id: Date.now().toString(),
-      truckId: truckIdToSend,
-      type: formData.type as 'fuel' | 'maintenance' | 'fees' | 'other',
-      amount: parseFloat(formData.amount),
-      currency: 'SAR',
-      date: formData.date,
-      description: formData.description,
-      category: formData.category,
-      receiptImage: formData.receiptImage || null,
-    };
-    onAdd(newExpense);
-    setFormData({
-      truckId: selectedTruckId || '',
-      type: 'fuel',
-      amount: '',
-      currency: 'SAR',
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      category: 'تشغيلية',
-      receiptImage: null,
-    });
-    setMaintenanceType('periodic');
-    onClose();
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -135,6 +101,11 @@ export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, sele
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               الشاحنة *
@@ -168,36 +139,14 @@ export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, sele
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             >
               <option value="fuel">وقود</option>
-              <option value="maintenance">صيانة</option>
               <option value="fees">رسوم</option>
               <option value="other">أخرى</option>
             </select>
           </div>
 
-          {/* Show maintenance type selection when maintenance is selected */}
-          {formData.type === 'maintenance' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                نوع الصيانة *
-              </label>
-              <select
-                value={maintenanceType}
-                onChange={(e) => setMaintenanceType(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                {maintenanceTypes.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              المبلغ *
+              المبلغ (ريال سعودي) *
             </label>
             <input
               type="number"
@@ -241,24 +190,21 @@ export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, sele
             />
           </div>
 
-          {formData.type !== 'maintenance' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                الفئة
-              </label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                <option value="تشغيلية">تشغيلية</option>
-                <option value="إدارية">إدارية</option>
-                <option value="صيانة">صيانة</option>
-                <option value="أخرى">أخرى</option>
-              </select>
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              الفئة
+            </label>
+            <select
+              name="category"
+              value={formData.category}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              <option value="تشغيلية">تشغيلية</option>
+              <option value="إدارية">إدارية</option>
+              <option value="أخرى">أخرى</option>
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -277,7 +223,7 @@ export function AddExpenseModal({ isOpen, onClose, onAdd, onAddMaintenance, sele
               type="submit"
               className="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors"
             >
-              {formData.type === 'maintenance' ? 'إضافة صيانة' : 'إضافة مصروف'}
+              إضافة مصروف
             </button>
             <button
               type="button"

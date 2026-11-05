@@ -1,17 +1,18 @@
-import React from 'react';
-import { Truck as TruckIcon, MapPin, Calendar, Wrench, DollarSign } from 'lucide-react';
+import { Truck as TruckIcon, MapPin, Calendar, DollarSign } from 'lucide-react';
 import { Truck } from '../../types';
 import { Link } from 'react-router-dom';
-import { useExpenses } from '../../hooks/useExpenses';
+import { useData } from '../../contexts/DataContext';
 
 interface TruckCardProps {
   truck: Truck;
 }
 
 export function TruckCard({ truck }: TruckCardProps) {
-  const { getExpensesByTruck, getTotalExpensesByTruck } = useExpenses();
-  const truckExpenses = getExpensesByTruck(truck.id);
-  const totalExpenses = getTotalExpensesByTruck(truck.id);
+  const { expenses, trips } = useData();
+  const truckExpenses = expenses.getExpensesByTruck(truck.id);
+  const totalExpenses = expenses.getTotalExpensesByTruck(truck.id);
+  // الرحلة النشطة تُشتق من قائمة الرحلات (الخادم لا يملأ truck.currentTrip)
+  const currentTrip = trips.trips.find(t => t.truckId === truck.id && t.status === 'active');
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -67,21 +68,21 @@ export function TruckCard({ truck }: TruckCardProps) {
             <span>{truck.loadCapacity} طن</span>
           </div>
 
-          {truck.currentTrip && (
+          {currentTrip && (
             <div className="bg-blue-50 rounded-lg p-3 space-y-2">
               <div className="flex items-center space-x-2 rtl:space-x-reverse text-sm">
                 <MapPin className="h-4 w-4 text-blue-600" />
                 <span className="font-medium text-blue-900">
-                  {truck.currentTrip.destination} - {truck.currentTrip.direction === 'outbound' ? 'ذهاب' : 'عودة'}
+                  {currentTrip.destination} - {currentTrip.direction === 'outbound' ? 'ذهاب' : 'عودة'}
                 </span>
               </div>
               <div className="w-full bg-blue-200 rounded-full h-2">
                 <div 
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${truck.currentTrip.progress}%` }}
+                  style={{ width: `${currentTrip.progress}%` }}
                 ></div>
               </div>
-              <p className="text-xs text-blue-700">تقدم الرحلة: {truck.currentTrip.progress}%</p>
+              <p className="text-xs text-blue-700">تقدم الرحلة: {currentTrip.progress}%</p>
             </div>
           )}
 

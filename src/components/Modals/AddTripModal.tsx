@@ -1,60 +1,86 @@
 import React, { useState, useEffect } from 'react';
 import { X, Route } from 'lucide-react';
-import { useTrucks } from '../../hooks/useTrucks';
+import { useData } from '../../contexts/DataContext';
+import { Trip } from '../../types';
+import { CreateTripPayload } from '../../services/api';
 
 interface AddTripModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (trip: any) => void;
+  onAdd: (trip: CreateTripPayload) => Promise<unknown>;
   selectedTruckId?: string;
+  /** عند تمرير رحلة يتحول المودال لوضع التعديل */
+  initialTrip?: Trip | null;
+  onUpdate?: (id: string, updates: Partial<Trip>) => Promise<unknown>;
 }
 
-export function AddTripModal({ isOpen, onClose, onAdd, selectedTruckId }: AddTripModalProps) {
-  const [formData, setFormData] = useState({
-    truckId: selectedTruckId || '',
-    destination: '',
-    direction: 'outbound',
-    startDate: new Date().toISOString().split('T')[0],
-    expectedEndDate: '',
-    progress: '0',
-    revenue: ''
-  });
+const emptyForm = {
+  truckId: '',
+  destination: '',
+  direction: 'outbound' as Trip['direction'],
+  startDate: new Date().toISOString().split('T')[0],
+  expectedEndDate: '',
+  progress: '0',
+  revenue: ''
+};
 
+export function AddTripModal({ isOpen, onClose, onAdd, selectedTruckId, initialTrip, onUpdate }: AddTripModalProps) {
+  const [formData, setFormData] = useState(emptyForm);
+  const [error, setError] = useState('');
+
+  const isEditing = !!initialTrip;
+
+  // تعبئة النموذج بقيم الرحلة عند فتح المودال في وضع التعديل،
+  // أو مزامنة الشاحنة المختارة مسبقاً في وضع الإضافة
   useEffect(() => {
-    if (selectedTruckId) {
-      setFormData(prev => ({ ...prev, truckId: selectedTruckId }));
+    if (isOpen) {
+      if (initialTrip) {
+        setFormData({
+          truckId: initialTrip.truckId,
+          destination: initialTrip.destination,
+          direction: initialTrip.direction,
+          startDate: initialTrip.startDate.split('T')[0],
+          expectedEndDate: initialTrip.expectedEndDate.split('T')[0],
+          progress: String(initialTrip.progress),
+          revenue: initialTrip.revenue != null ? String(initialTrip.revenue) : ''
+        });
+      } else {
+        setFormData({ ...emptyForm, truckId: selectedTruckId || '' });
+      }
+      setError('');
     }
-  }, [selectedTruckId]);
+  }, [isOpen, initialTrip, selectedTruckId]);
 
-  const { trucks, loading } = useTrucks();
-  const availableTrucks = trucks.filter(truck => truck.status === 'available');
+  const { trucks: trucksState } = useData();
+  const { trucks, loading } = trucksState;
+  // في وضع التعديل تبقى شاحنة الرحلة نفسها متاحة في القائمة حتى لو كانت في رحلة
+  const availableTrucks = trucks.filter(truck =>
+    truck.status === 'available' || (isEditing && initialTrip && truck.id === initialTrip.truckId)
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newTrip = {
-      id: Date.now().toString(),
-      truckId: formData.truckId,
-      destination: formData.destination,
-      direction: formData.direction as 'outbound' | 'return',
-      startDate: formData.startDate,
-      expectedEndDate: formData.expectedEndDate,
-      status: 'active' as const,
-      progress: parseInt(formData.progress),
-      revenue: formData.revenue ? parseFloat(formData.revenue) : null
-    };
-
-    onAdd(newTrip);
-    setFormData({
-      truckId: selectedTruckId || '',
-      destination: '',
-      direction: 'outbound',
-      startDate: new Date().toISOString().split('T')[0],
-      expectedEndDate: '',
-      progress: '0',
-      revenue: ''
-    });
-    onClose();
+    setError('');
+    try {
+      const payload = {
+        truckId: formData.truckId,
+        destination: formData.destination,
+        direction: formData.direction,
+        startDate: formData.startDate,
+        expectedEndDate: formData.expectedEndDate,
+        progress: parseInt(formData.progress, 10),
+        revenue: formData.revenue ? parseFloat(formData.revenue) : null
+      };
+      if (isEditing && onUpdate && initialTrip) {
+        await onUpdate(initialTrip.id, payload);
+      } else {
+        await onAdd({ ...payload, status: 'active' as const });
+      }
+      setFormData({ ...emptyForm, truckId: selectedTruckId || '' });
+      onClose();
+    } catch {
+      setError(isEditing ? 'تعذر حفظ تعديلات الرحلة، يرجى المحاولة مجدداً' : 'تعذر إضافة الرحلة، يرجى المحاولة مجدداً');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -73,7 +99,7 @@ export function AddTripModal({ isOpen, onClose, onAdd, selectedTruckId }: AddTri
             <div className="bg-blue-100 p-2 rounded-lg">
               <Route className="h-5 w-5 text-blue-600" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900">إضافة رحلة جديدة</h2>
+            <h2 className="text-xl font-semibold text-gray-900">{isEditing ? 'تعديل الرحلة' : 'إضافة رحلة جديدة'}</h2>
           </div>
           <button
             onClick={onClose}
@@ -84,6 +110,11 @@ export function AddTripModal({ isOpen, onClose, onAdd, selectedTruckId }: AddTri
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               الشاحنة *
@@ -200,7 +231,7 @@ export function AddTripModal({ isOpen, onClose, onAdd, selectedTruckId }: AddTri
               type="submit"
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
-              إضافة الرحلة
+              {isEditing ? 'حفظ التعديلات' : 'إضافة الرحلة'}
             </button>
             <button
               type="button"

@@ -1,0 +1,28 @@
+{
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "dockerComposeFile": "../docker-compose.yml",
+  "forwardPorts": [
+    5173,
+    3001
+  ],
+  "name": "truck-system-demo",
+  "overrideCommand": false,
+  "portsAttributes": {
+    "3001": {
+      "label": "API server"
+    },
+    "5173": {
+      "label": "Truck app (frontend)",
+      "onAutoForward": "openPreview"
+    }
+  },
+  "service": "web",
+  "shutdownAction": "stopCompose",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
+}

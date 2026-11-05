@@ -1,11 +1,8 @@
-import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useTrips } from '../../hooks/useTrips';
-import { useExpenses } from '../../hooks/useExpenses';
+import { useData } from '../../contexts/DataContext';
 
 export function WeeklyPerformanceChart() {
-  const { trips } = useTrips();
-  const { expenses } = useExpenses();
+  const { trips } = useData();
 
   // حساب البيانات الأسبوعية
   const getWeeklyData = () => {
@@ -17,21 +14,20 @@ export function WeeklyPerformanceChart() {
     return days.map((day, index) => {
       const dayDate = new Date(startOfWeek);
       dayDate.setDate(startOfWeek.getDate() + index);
-      
-      const dayTrips = trips.filter(trip => {
+
+      const dayTrips = trips.trips.filter(trip => {
         const tripDate = new Date(trip.startDate);
         return tripDate.toDateString() === dayDate.toDateString();
       });
 
-      const dayExpenses = expenses.filter(expense => {
-        const expenseDate = new Date(expense.date);
-        return expenseDate.toDateString() === dayDate.toDateString();
-      });
+      // الإيرادات = مجموع trip.revenue للرحلات التي بدأت في ذلك اليوم.
+      // revenue هو الإيراد المتوقع المُدخل عند إنشاء الرحلة، والرحلات بلا revenue تُحسب صفراً.
+      const revenue = dayTrips.reduce((sum, trip) => sum + (trip.revenue ?? 0), 0);
 
       return {
         day,
         trips: dayTrips.length,
-        revenue: dayExpenses.reduce((sum, exp) => sum + exp.amount, 0)
+        revenue
       };
     });
   };
@@ -47,17 +43,17 @@ export function WeeklyPerformanceChart() {
             <XAxis dataKey="day" />
             <YAxis />
             <Tooltip />
-            <Line 
-              type="monotone" 
-              dataKey="trips" 
-              stroke="#3B82F6" 
+            <Line
+              type="monotone"
+              dataKey="trips"
+              stroke="#3B82F6"
               strokeWidth={2}
               name="عدد الرحلات"
             />
-            <Line 
-              type="monotone" 
-              dataKey="revenue" 
-              stroke="#10B981" 
+            <Line
+              type="monotone"
+              dataKey="revenue"
+              stroke="#10B981"
               strokeWidth={2}
               name="الإيرادات (ريال)"
             />
